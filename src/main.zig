@@ -573,6 +573,11 @@ pub const StreamingParser = struct {
                 0x09, 0x0A, 0x0D, 0x20 => {
                     // whitespace
                 },
+				',' => {
+					if (p.after_string_state != .ObjectSeparator and p.after_string_state != .ValueEnd) {
+						return error.InvalidValueBegin;
+					}
+				},
                 else => {
                     if (identifierStartTable[c]) {
                         p.state = .Identifier;
@@ -717,7 +722,7 @@ pub const StreamingParser = struct {
 
             .Identifier => switch (c) {
                 0x09, 0x0A, 0x0D, 0x20 => {
-                    p.state = .ObjectSeparator;
+                    p.state = p.after_string_state;
                     token.* = .{ .String = .{ .count = p.count, .escapes = StringEscapes.None } };
                 },
                 ':' => {

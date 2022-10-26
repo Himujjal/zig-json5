@@ -512,6 +512,17 @@ test "JSON5 tests" {
     ,
         \\{"required":"something","another_required":"something else","null":1}
     );
+
+    try parseStringifyAndTest(
+        \\{
+        \\ 		// name: "import"
+        \\ 		p: null,
+		\\      // hee
+		\\      a: [null,],
+        \\}
+    ,
+        \\{"p":null,"a":[null]}
+    );
 }
 
 test "json5 write stream" {
