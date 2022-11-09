@@ -573,11 +573,11 @@ pub const StreamingParser = struct {
                 0x09, 0x0A, 0x0D, 0x20 => {
                     // whitespace
                 },
-				',' => {
-					if (p.after_string_state != .ObjectSeparator and p.after_string_state != .ValueEnd) {
-						return error.InvalidValueBegin;
-					}
-				},
+                ',' => {
+                    if (p.after_string_state != .ObjectSeparator and p.after_string_state != .ValueEnd) {
+                        return error.InvalidValueBegin;
+                    }
+                },
                 else => {
                     if (identifierStartTable[c]) {
                         p.state = .Identifier;
@@ -2731,6 +2731,93 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
             }, self.stream);
         }
     };
+}
+
+fn getStringifiedJSON(allocator: Allocator, json5Value: Value) ![]const u8 {
+    var arr = std.ArrayList(u8).init(allocator);
+    try json5Value.json5Stringify(.{}, arr.writer());
+    return arr.items;
+}
+
+fn jsonValueEqual(allocator: Allocator, a: Value, b: Value) !bool {
+    return switch (a) {
+        .Null => switch (b) {
+            .Null => true,
+            else => false,
+        },
+        .Bool => |a_b| switch (b) {
+            .Bool => |b_b| a_b or b_b,
+            else => false,
+        },
+        .Integer => |a_i| switch (b) {
+            .Integer => |b_i| a_i == b_i or std.mem.eql(
+                u8,
+                try getStringifiedJSON(allocator, a),
+                try getStringifiedJSON(allocator, b),
+            ),
+            else => false,
+        },
+        .Float => |a_f| switch (b) {
+            .Float => |b_f| a_f == b_f or std.mem.eql(
+                u8,
+                try getStringifiedJSON(allocator, a),
+                try getStringifiedJSON(allocator, b),
+            ),
+            else => false,
+        },
+        .NumberString => |a_ns| switch (b) {
+            .NumberString => |b_ns| std.mem.eql(u8, a_ns, b_ns),
+            else => false,
+        },
+        .String => |a_s| switch (b) {
+            .String => |b_s| {
+				return std.mem.eql(u8, a_s, b_s);
+			},
+            else => false,
+        },
+        .Array => |a_a| switch (b) {
+            .Array => |b_a| {
+                if (a_a.items.len != b_a.items.len) return false;
+                for (a_a.items) |a_item, i| {
+                    const b_item = b_a.items[i];
+                    if (!(try jsonValueEqual(allocator, a_item, b_item))) return false;
+                }
+                return true;
+            },
+            else => false,
+        },
+        .Object => |a_o| switch (b) {
+            .Object => |b_o| {
+                if (a_o.count() != b_o.count()) return false;
+                const b_o_keys = b_o.keys();
+                const a_o_keys = a_o.keys();
+                for (a_o_keys) |a_o_k| {
+                    var b_o_k: ?[]const u8 = null;
+                    for (b_o_keys) |v| {
+                        if (std.mem.eql(u8, v, a_o_k)) {
+                            b_o_k = v;
+                            break;
+                        }
+                    }
+                    if (b_o_k == null) return false;
+
+                    const a_o_v = a_o.get(a_o_k).?;
+                    const b_o_v = b_o.get(b_o_k.?).?;
+
+                    if (!try jsonValueEqual(allocator, a_o_v, b_o_v)) return false;
+                }
+                return true;
+            },
+            else => false,
+        },
+    };
+}
+
+pub fn json5Equal(allocator: Allocator, a: Value, b: Value) !bool {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    var val = try jsonValueEqual(arena.allocator(), a, b);
+    arena.deinit();
+    return val;
 }
 
 pub fn writeStream(

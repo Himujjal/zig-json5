@@ -467,62 +467,116 @@ fn parseStringifyAndTest(input: []const u8, expected: []const u8) !void {
         return err;
     };
 }
-test "JSON5 tests" {
-    try parseStringifyAndTest("/**/{}", "{}");
-    try parseStringifyAndTest("/**/null", "null");
-    try parseStringifyAndTest("/**/[]", "[]");
-    try parseStringifyAndTest("[/**/]", "[]");
-    try parseStringifyAndTest("{/**/}", "{}");
-    try parseStringifyAndTest(
-        \\ // comment1
-        \\ {// comment2
-        \\ "hello" // comment3
-        \\ : // comment4
-        \\ "world" // comment 5
-        \\ }
-        \\ // comment 6
-    ,
-        \\{"hello":"world"}
-        ,
-    );
-    try parseStringifyAndTest("'he\\'llo'", "\"he'llo\"");
-    try parseStringifyAndTest("{ 'he\\'llo': 'world' }", "{\"he'llo\":\"world\"}");
-    try parseStringifyAndTest("['hello', { 'hello': \"world\" }]", "[\"hello\",{\"hello\":\"world\"}]");
-    try parseStringifyAndTest("{hello: 'world'}", "{\"hello\":\"world\"}");
 
-    try parseStringifyAndTest("{hello: 'world', yo: ['yo',]}", "{\"hello\":\"world\",\"yo\":[\"yo\"]}");
-    try parseStringifyAndTest(
-        \\ { hello: "\
-        \\world \n 2" }
-    , "{\"hello\":\"\\nworld \\n 2\"}");
+const JSON5TestStruct = struct {
+    source: []const u8,
+    output: []const u8,
+};
+const json5_tests = &[_]JSON5TestStruct{
+    .{ .source = "/**/{}", .output = "{}" },
+    .{ .source = "/**/null", .output = "null" },
+    .{ .source = "/**/[]", .output = "[]" },
+    .{ .source = "[/**/]", .output = "[]" },
+    .{ .source = "{/**/}", .output = "{}" },
+    .{ .source = 
+    \\ // comment1
+    \\ {// comment2
+    \\ "hello" // comment3
+    \\ : // comment4
+    \\ "world" // comment 5
+    \\ }
+    \\ // comment 6
+    , .output = 
+    \\{"hello":"world"}
+    },
+    .{ .source = "'he\\'llo'", .output = "\"he'llo\"" },
+    .{ .source = "{ 'he\\'llo': 'world' }", .output = "{\"he'llo\":\"world\"}" },
+    .{ .source = "['hello', { 'hello': \"world\" }]", .output = "[\"hello\",{\"hello\":\"world\"}]" },
+    .{ .source = "{hello: 'world'}", .output = "{\"hello\":\"world\"}" },
+    .{ .source = "{hello: 'world', yo: ['yo',]}", .output = "{\"hello\":\"world\",\"yo\":[\"yo\"]}" },
 
-    try parseStringifyAndTest("0.1 ", "1.0e-01");
-    try parseStringifyAndTest("{true:true,false:[true,false],null:1}", "{\"true\":true,\"false\":[true,false],\"null\":1}");
-    try parseStringifyAndTest("{true:true, null:[true, null]}", "{\"true\":true,\"null\":[true,null]}");
-    try parseStringifyAndTest(
+    .{ .source = 
+    \\ { hello: "\
+    \\world \n 2" }
+    , .output = "{\"hello\":\"\\nworld \\n 2\"}" },
+
+    .{ .source = "0.1 ", .output = "1.0e-01" },
+    .{ .source = "{true:true,false:[true,false],null:1}", .output = "{\"true\":true,\"false\":[true,false],\"null\":1}" },
+
+    .{ .source = "{true:true, null:[true, null]}", .output = "{\"true\":true,\"null\":[true,null]}" },
+
+    .{
+        .source = 
         \\ {true:true,false:1,null:{null:null,true:false}}
-    , "{\"true\":true,\"false\":1,\"null\":{\"null\":null,\"true\":false}}");
-    try parseStringifyAndTest(
-        \\{"required":"something","another_required":"something else"}
-    ,
-        \\{"required":"something","another_required":"something else"}
-    );
-    try parseStringifyAndTest(
-        \\{required:"something",another_required:"something else",null:1}
-    ,
-        \\{"required":"something","another_required":"something else","null":1}
-    );
+        ,
+        .output = "{\"true\":true,\"false\":1,\"null\":{\"null\":null,\"true\":false}}",
+    },
+    .{ .source = 
+    \\{"required":"something","another_required":"something else"}
+    , .output = 
+    \\{"required":"something","another_required":"something else"}
+    },
 
-    try parseStringifyAndTest(
-        \\{
-        \\ 		// name: "import"
-        \\ 		p: null,
-		\\      // hee
-		\\      a: [null,],
-        \\}
-    ,
-        \\{"p":null,"a":[null]}
-    );
+    .{ .source = 
+    \\{required:"something",another_required:"something else",null:1}
+    , .output = 
+    \\{"required":"something","another_required":"something else","null":1}
+    },
+    .{ .source = 
+    \\{
+    \\ 		// name: "import"
+    \\ 		p: null,
+    \\      // hee
+    \\      a: [null,],
+    \\}
+    , .output = 
+    \\{"p":null,"a":[null]}
+    },
+};
+
+test "JSON5 tests" {
+    for (json5_tests) |json_test, i| {
+        parseStringifyAndTest(json_test.source, json_test.output) catch |err| {
+            std.debug.print(
+                "\n====ERROR: {d}====\n ___{s}___ |||||| ___{s}___\n",
+                .{ i, json_test.source, json_test.output },
+            );
+            return err;
+        };
+    }
+}
+
+test "JSON5 Deep Equality Test" {
+    const a = testing.allocator;
+    const Parser = main.Parser;
+
+    for (json5_tests) |json_test, i| {
+        var source_parser = Parser.init(a, false);
+        var source_tree = try source_parser.parse(json_test.source);
+        var output_parser = Parser.init(a, false);
+        var output_tree = try output_parser.parse(json_test.source);
+
+        if (i == 5) {
+            var is_equal = try main.json5Equal(a, source_tree.root, output_tree.root);
+            std.testing.expect(is_equal) catch |err| {
+                std.debug.print(
+                    "\n====ERROR: i={d}====\n ___{s}___ |||||| ___{s}___\n",
+                    .{ i, json_test.source, json_test.output },
+                );
+
+                source_parser.deinit();
+                source_tree.deinit();
+                output_parser.deinit();
+                output_tree.deinit();
+                return err;
+            };
+        }
+
+        source_parser.deinit();
+        source_tree.deinit();
+        output_parser.deinit();
+        output_tree.deinit();
+    }
 }
 
 test "json5 write stream" {
