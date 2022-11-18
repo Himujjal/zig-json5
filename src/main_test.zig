@@ -451,6 +451,9 @@ test "encodesTo" {
 /// Parses `input` skipping comments and whitespaces, then stringifies them to JSON and then tests the
 /// stringified value to `output`
 fn parseStringifyAndTest(input: []const u8, expected: []const u8) !void {
+    const last_char = expected[expected.len - 1];
+    var expected_new = if (last_char == 0 or last_char == 10) expected[0..(expected.len - 1)] else expected;
+
     const Parser = main.Parser;
     const a = testing.allocator;
 
@@ -462,8 +465,8 @@ fn parseStringifyAndTest(input: []const u8, expected: []const u8) !void {
     defer tree.deinit();
     try tree.root.json5Stringify(.{}, string.writer());
 
-    testing.expect(mem.eql(u8, string.items, expected)) catch |err| {
-        std.debug.print("\n==Expected: {s}, got: {s}\n", .{ expected, string.items });
+    testing.expect(mem.eql(u8, string.items, expected_new)) catch |err| {
+        std.debug.print("\n===Expected:\n{s}\n===got:\n{s}\n", .{ expected_new, string.items });
         return err;
     };
 }
@@ -532,13 +535,15 @@ const json5_tests = &[_]JSON5TestStruct{
     , .output = 
     \\{"p":null,"a":[null]}
     },
+    .{ .source = @embedFile("./fixtures/test1.json5"), .output = @embedFile("./fixtures/test1.json") },
+    .{ .source = @embedFile("./fixtures/test2.json5"), .output = @embedFile("./fixtures/test2.json") },
 };
 
 test "JSON5 tests" {
     for (json5_tests) |json_test, i| {
         parseStringifyAndTest(json_test.source, json_test.output) catch |err| {
             std.debug.print(
-                "\n====ERROR: {d}====\n ___{s}___ |||||| ___{s}___\n",
+                "\n====ERROR in Comparison: i={d}====\nEXPECTED =====>\n{s}\n======\nGOT =====>\n{s}\n",
                 .{ i, json_test.source, json_test.output },
             );
             return err;
@@ -560,7 +565,7 @@ test "JSON5 Deep Equality Test" {
             var is_equal = try main.json5Equal(a, source_tree.root, output_tree.root);
             std.testing.expect(is_equal) catch |err| {
                 std.debug.print(
-                    "\n====ERROR: i={d}====\n ___{s}___ |||||| ___{s}___\n",
+                    "\n====ERROR in Deep equality: i={d}====\nEXPECTED =====>\n{s}\n======\nGOT =====>\n{s}\n",
                     .{ i, json_test.source, json_test.output },
                 );
 

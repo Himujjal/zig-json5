@@ -448,6 +448,9 @@ pub const StreamingParser = struct {
             .CommentSingleLine => switch (c) {
                 '\n' => {
                     p.state = p.after_value_state;
+                    if (p.after_value_state == .TopLevelBegin) {
+                        p.after_value_state = .ValueEnd;
+                    }
                 },
                 else => {},
             },
@@ -2771,8 +2774,8 @@ fn jsonValueEqual(allocator: Allocator, a: Value, b: Value) !bool {
         },
         .String => |a_s| switch (b) {
             .String => |b_s| {
-				return std.mem.eql(u8, a_s, b_s);
-			},
+                return std.mem.eql(u8, a_s, b_s);
+            },
             else => false,
         },
         .Array => |a_a| switch (b) {
