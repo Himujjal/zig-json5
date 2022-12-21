@@ -466,7 +466,7 @@ fn parseStringifyAndTest(input: []const u8, expected: []const u8) !void {
     try tree.root.json5Stringify(.{}, string.writer());
 
     testing.expect(mem.eql(u8, string.items, expected_new)) catch |err| {
-        std.debug.print("\n===Expected:\n{s}\n===got:\n{s}\n", .{ expected_new, string.items });
+        std.debug.print("\n===Expected:\n{s}\n===Got:\n{s}\n", .{ expected_new, string.items });
         return err;
     };
 }
@@ -537,14 +537,16 @@ const json5_tests = &[_]JSON5TestStruct{
     },
     .{ .source = @embedFile("./fixtures/test1.json5"), .output = @embedFile("./fixtures/test1.json") },
     .{ .source = @embedFile("./fixtures/test2.json5"), .output = @embedFile("./fixtures/test2.json") },
+    .{ .source = @embedFile("./fixtures/test3.json5"), .output = @embedFile("./fixtures/test3.json") },
+    .{ .source = @embedFile("./fixtures/test4.json5"), .output = @embedFile("./fixtures/test4.json") },
 };
 
 test "JSON5 tests" {
     for (json5_tests) |json_test, i| {
         parseStringifyAndTest(json_test.source, json_test.output) catch |err| {
             std.debug.print(
-                "\n====ERROR in Comparison: i={d}====\nEXPECTED =====>\n{s}\n======\nGOT =====>\n{s}\n",
-                .{ i, json_test.source, json_test.output },
+                "\n====ERROR in Comparison: Error:{}\n i={d}====\nSOURCE =====>\n{s}\n======\nOUTPUT =====>\n{s}\n",
+                .{ err, i, json_test.source, json_test.output },
             );
             return err;
         };

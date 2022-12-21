@@ -562,7 +562,7 @@ pub const StreamingParser = struct {
                 },
                 'n' => {
                     const last_type = p.stack.peek() orelse return error.TooManyClosingItems;
-                    if (last_type == .object or p.after_string_state == .ObjectSeparator) {
+                    if (last_type == .object) {
                         p.state = .Identifier;
                     } else {
                         p.state = .NullLiteral1;
@@ -734,7 +734,9 @@ pub const StreamingParser = struct {
                     token.* = .{ .String = .{ .count = p.count, .escapes = StringEscapes.None } };
                 },
                 else => {
-                    if (!identifierTable[c]) return error.InvalidIdentifier;
+                    if (!identifierTable[c]) {
+                        return error.InvalidIdentifier;
+                    }
                 },
             },
 
