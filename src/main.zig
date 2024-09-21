@@ -8,6 +8,9 @@ const testing = std.testing;
 const mem = std.mem;
 const maxInt = std.math.maxInt;
 
+// Assigned this to Json5 to avoid some ambigous references in the file
+const Json5 = @This();
+
 const StringEscapes = union(enum) {
     None,
     Some: struct {
@@ -87,7 +90,7 @@ pub const Token = union(enum) {
         pub fn decodedLength(self: @This()) usize {
             return self.count +% switch (self.escapes) {
                 .None => 0,
-                .Some => |s| @bitCast(usize, s.size_diff),
+                .Some => |s| @as(usize, @bitCast(s.size_diff))
             };
         }
 
@@ -143,9 +146,9 @@ fn AggregateContainerStack(comptime n: usize) type {
             }
 
             const index = self.len / element_bitcount;
-            const sub_index = @intCast(ElementShiftAmountType, self.len % element_bitcount);
+            const sub_index = @as(ElementShiftAmountType, @intCast(self.len % element_bitcount));
             const clear_mask = ~(@as(ElementType, 1) << sub_index);
-            const set_bits = @as(ElementType, @enumToInt(ty)) << sub_index;
+            const set_bits = @as(ElementType, @intFromEnum(ty)) << sub_index;
 
             self.memory[index] &= clear_mask;
             self.memory[index] |= set_bits;
@@ -159,9 +162,9 @@ fn AggregateContainerStack(comptime n: usize) type {
 
             const bit_to_extract = self.len - 1;
             const index = bit_to_extract / element_bitcount;
-            const sub_index = @intCast(ElementShiftAmountType, bit_to_extract % element_bitcount);
-            const bit = @intCast(u1, (self.memory[index] >> sub_index) & 1);
-            return @intToEnum(AggregateContainerType, bit);
+            const sub_index = @as(ElementShiftAmountType, @intCast( bit_to_extract % element_bitcount));
+            const bit = @as(u1, @intCast((self.memory[index] >> sub_index) & 1));
+            return @enumFromInt(bit);
         }
 
         pub fn pop(self: *Self) ?AggregateContainerType {
@@ -289,11 +292,11 @@ pub const StreamingParser = struct {
         // processing a complete value type.
         pub fn fromAggregateContainerType(ty: AggregateContainerType) State {
             comptime {
-                std.debug.assert(@enumToInt(AggregateContainerType.object) == @enumToInt(State.ObjectSeparator));
-                std.debug.assert(@enumToInt(AggregateContainerType.array) == @enumToInt(State.ValueEnd));
+                std.debug.assert(@intFromEnum(AggregateContainerType.object) == @intFromEnum(State.ObjectSeparator));
+                std.debug.assert(@intFromEnum(AggregateContainerType.array) == @intFromEnum(State.ValueEnd));
             }
 
-            return @intToEnum(State, @enumToInt(ty));
+            return @enumFromInt(@intFromEnum(ty));
         }
     };
 
@@ -1418,7 +1421,7 @@ fn parsedEqual(a: anytype, b: @TypeOf(a)) bool {
             }
         },
         .Array => {
-            for (a) |e, i|
+            for (a, 0..) |e, i|
                 if (!parsedEqual(e, b[i])) return false;
             return true;
         },
@@ -1432,7 +1435,7 @@ fn parsedEqual(a: anytype, b: @TypeOf(a)) bool {
             .One => return parsedEqual(a.*, b.*),
             .Slice => {
                 if (a.len != b.len) return false;
-                for (a) |e, i|
+                for (a, 0..) |e, i|
                     if (!parsedEqual(e, b[i])) return false;
                 return true;
             },
@@ -1501,7 +1504,7 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
             if (unionInfo.tag_type) |_| {
                 var errors = error{NoUnionMembersMatched};
                 for (unionInfo.fields) |u_field| {
-                    errors = errors || ParseInternalErrorImpl(u_field.field_type, inferred_types ++ [_]type{T});
+                    errors = errors || ParseInternalErrorImpl(u_field.type, inferred_types ++ [_]type{T});
                 }
                 return errors;
             } else {
@@ -1518,7 +1521,7 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
                 MissingField,
             } || SkipValueError || TokenStream.Error;
             for (structInfo.fields) |field| {
-                errors = errors || ParseInternalErrorImpl(field.field_type, inferred_types ++ [_]type{T});
+                errors = errors || ParseInternalErrorImpl(field.type, inferred_types ++ [_]type{T});
             }
             return errors;
         },
@@ -1528,7 +1531,7 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
                 ParseInternalErrorImpl(arrayInfo.child, inferred_types ++ [_]type{T});
         },
         .Pointer => |ptrInfo| {
-            var errors = error{AllocatorRequired} || std.mem.Allocator.Error;
+            const errors = error{AllocatorRequired} || std.mem.Allocator.Error;
             switch (ptrInfo.size) {
                 .One => {
                     return errors || ParseInternalErrorImpl(ptrInfo.child, inferred_types ++ [_]type{T});
@@ -1575,7 +1578,7 @@ fn parseInternal(
                     const float = try std.fmt.parseFloat(f128, numberToken.slice(tokens.slice, tokens.i - 1));
                     if (@round(float) != float) return error.InvalidNumber;
                     if (float > std.math.maxInt(T) or float < std.math.minInt(T)) return error.Overflow;
-                    return @floatToInt(T, float);
+                    return @as(T, @intFromFloat(float));
                 },
                 .String => |stringToken| {
                     return std.fmt.parseInt(T, stringToken.slice(tokens.slice, tokens.i - 1), 10) catch |err| {
@@ -1585,7 +1588,7 @@ fn parseInternal(
                                 const float = try std.fmt.parseFloat(f128, stringToken.slice(tokens.slice, tokens.i - 1));
                                 if (@round(float) != float) return error.InvalidNumber;
                                 if (float > std.math.maxInt(T) or float < std.math.minInt(T)) return error.Overflow;
-                                return @floatToInt(T, float);
+                                return @intFromFloat(float);
                             },
                         }
                     };
@@ -1630,7 +1633,7 @@ fn parseInternal(
                 inline for (unionInfo.fields) |u_field| {
                     // take a copy of tokens so we can withhold mutations until success
                     var tokens_copy = tokens.*;
-                    if (parseInternal(u_field.field_type, token, &tokens_copy, options)) |value| {
+                    if (parseInternal(u_field.type, token, &tokens_copy, options)) |value| {
                         tokens.* = tokens_copy;
                         return @unionInit(T, u_field.name, value);
                     } else |err| {
@@ -1656,9 +1659,9 @@ fn parseInternal(
             var r: T = undefined;
             var fields_seen = [_]bool{false} ** structInfo.fields.len;
             errdefer {
-                inline for (structInfo.fields) |field, i| {
+                inline for (structInfo.fields, 0..) |field, i| {
                     if (fields_seen[i] and !field.is_comptime) {
-                        parseFree(field.field_type, @field(r, field.name), options);
+                        parseFree(field.type, @field(r, field.name), options);
                     }
                 }
             }
@@ -1671,7 +1674,7 @@ fn parseInternal(
                         var child_options = options;
                         child_options.allow_trailing_data = true;
                         var found = false;
-                        inline for (structInfo.fields) |field, i| {
+                        inline for (structInfo.fields, 0..) |field, i| {
                             // TODO: using switches here segfault the compiler (#2727?)
                             if ((stringToken.escapes == .None and mem.eql(u8, field.name, key_source_slice)) or (stringToken.escapes == .Some and (field.name.len == stringToken.decodedLength() and encodesTo(field.name, key_source_slice)))) {
                                 // if (switch (stringToken.escapes) {
@@ -1686,24 +1689,24 @@ fn parseInternal(
                                     // }
                                     if (options.duplicate_field_behavior == .UseFirst) {
                                         // unconditonally ignore value. for comptime fields, this skips check against default_value
-                                        parseFree(field.field_type, try parse(field.field_type, tokens, child_options), child_options);
+                                        parseFree(field.type, try parse(field.type, tokens, child_options), child_options);
                                         found = true;
                                         break;
                                     } else if (options.duplicate_field_behavior == .Error) {
                                         return error.DuplicateJSON5Field;
                                     } else if (options.duplicate_field_behavior == .UseLast) {
                                         if (!field.is_comptime) {
-                                            parseFree(field.field_type, @field(r, field.name), child_options);
+                                            parseFree(field.type, @field(r, field.name), child_options);
                                         }
                                         fields_seen[i] = false;
                                     }
                                 }
                                 if (field.is_comptime) {
-                                    if (!try parsesTo(field.field_type, @ptrCast(*align(1) const field.field_type, field.default_value.?).*, tokens, child_options)) {
+                                    if (!try parsesTo(field.type, @as(*align(1) const field.type, @ptrCast(field.default_value.?)).*, tokens, child_options)) {
                                         return error.UnexpectedValue;
                                     }
                                 } else {
-                                    @field(r, field.name) = try parse(field.field_type, tokens, child_options);
+                                    @field(r, field.name) = try parse(field.type, tokens, child_options);
                                 }
                                 fields_seen[i] = true;
                                 found = true;
@@ -1722,11 +1725,11 @@ fn parseInternal(
                     else => return error.UnexpectedToken,
                 }
             }
-            inline for (structInfo.fields) |field, i| {
+            inline for (structInfo.fields, 0..) |field, i| {
                 if (!fields_seen[i]) {
                     if (field.default_value) |default_ptr| {
                         if (!field.is_comptime) {
-                            const default = @ptrCast(*align(1) const field.field_type, default_ptr).*;
+                            const default = @as(*align(1) const field.type, @ptrCast(default_ptr)).*;
                             @field(r, field.name) = default;
                         }
                     } else {
@@ -1806,7 +1809,7 @@ fn parseInternal(
                             }
 
                             if (ptrInfo.sentinel) |some| {
-                                const sentinel_value = @ptrCast(*align(1) const ptrInfo.child, some).*;
+                                const sentinel_value = @as(*align(1) const ptrInfo.child, @ptrCast(some)).*;
                                 try arraylist.append(sentinel_value);
                                 const output = arraylist.toOwnedSlice();
                                 return output[0 .. output.len - 1 :sentinel_value];
@@ -1818,15 +1821,15 @@ fn parseInternal(
                             if (ptrInfo.child != u8) return error.UnexpectedToken;
                             const source_slice = stringToken.slice(tokens.slice, tokens.i - 1);
                             const len = stringToken.decodedLength();
-                            const output = try allocator.alloc(u8, len + @boolToInt(ptrInfo.sentinel != null));
+                            const output = try allocator.alloc(u8, len + @intFromBool(ptrInfo.sentinel != null));
                             errdefer allocator.free(output);
                             switch (stringToken.escapes) {
-                                .None => mem.copy(u8, output, source_slice),
+                                .None => @memcpy(output, source_slice),
                                 .Some => try unescapeValidString(output, source_slice),
                             }
 
                             if (ptrInfo.sentinel) |some| {
-                                const char = @ptrCast(*const u8, some).*;
+                                const char = @as(*const u8, @ptrCast(some)).*;
                                 output[len] = char;
                                 return output[0..len :char];
                             }
@@ -1873,7 +1876,7 @@ pub fn parseFree(comptime T: type, value: T, options: ParseOptions) void {
             if (unionInfo.tag_type) |UnionTagType| {
                 inline for (unionInfo.fields) |u_field| {
                     if (value == @field(UnionTagType, u_field.name)) {
-                        parseFree(u_field.field_type, @field(value, u_field.name), options);
+                        parseFree(u_field.type, @field(value, u_field.name), options);
                         break;
                     }
                 }
@@ -1884,7 +1887,7 @@ pub fn parseFree(comptime T: type, value: T, options: ParseOptions) void {
         .Struct => |structInfo| {
             inline for (structInfo.fields) |field| {
                 if (!field.is_comptime) {
-                    parseFree(field.field_type, @field(value, field.name), options);
+                    parseFree(field.type, @field(value, field.name), options);
                 }
             }
         },
@@ -1991,7 +1994,7 @@ pub const Parser = struct {
             },
             .ObjectValue => {
                 var object = &p.stack.items[p.stack.items.len - 2].Object;
-                var key = p.stack.items[p.stack.items.len - 1].String;
+                const key = p.stack.items[p.stack.items.len - 1].String;
 
                 switch (token) {
                     .ObjectBegin => {
@@ -2258,7 +2261,7 @@ pub const StringifyOptions = struct {
     };
 
     /// Controls the whitespace emitted
-    whitespace: ?Whitespace = null,
+    whitespace: ?StringifyOptions.Whitespace = null,
 
     /// Should optional fields with null value be written?
     emit_null_optional_fields: bool = true,
@@ -2295,8 +2298,8 @@ fn outputUnicodeEscape(
         assert(codepoint <= 0x10FFFF);
         // To escape an extended character that is not in the Basic Multilingual Plane,
         // the character is represented as a 12-character sequence, encoding the UTF-16 surrogate pair.
-        const high = @intCast(u16, (codepoint - 0x10000) >> 10) + 0xD800;
-        const low = @intCast(u16, codepoint & 0x3FF) + 0xDC00;
+        const high = @as(u16, @intCast((codepoint - 0x10000) >> 10)) + 0xD800;
+        const low = @as(u16, @intCast(codepoint & 0x3FF)) + 0xDC00;
         try out_stream.writeAll("\\u");
         try std.fmt.formatIntValue(high, "x", std.fmt.FormatOptions{ .width = 4, .fill = '0' }, out_stream);
         try out_stream.writeAll("\\u");
@@ -2361,7 +2364,7 @@ pub fn stringify(
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
         .Float, .ComptimeFloat => {
-            return std.fmt.formatFloatScientific(value, std.fmt.FormatOptions{}, out_stream);
+            return std.fmt.format(out_stream, "{e}", .{value});
         },
         .Int, .ComptimeInt => {
             return std.fmt.formatIntValue(value, "", std.fmt.FormatOptions{}, out_stream);
@@ -2380,14 +2383,14 @@ pub fn stringify(
             }
         },
         .Enum => {
-            if (comptime std.meta.trait.hasFn("json5Stringify")(T)) {
+            if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
 
             @compileError("Unable to stringify enum '" ++ @typeName(T) ++ "'");
         },
         .Union => {
-            if (comptime std.meta.trait.hasFn("json5Stringify")(T)) {
+            if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
 
@@ -2403,7 +2406,7 @@ pub fn stringify(
             }
         },
         .Struct => |S| {
-            if (comptime std.meta.trait.hasFn("json5Stringify")(T)) {
+            if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
 
@@ -2415,12 +2418,12 @@ pub fn stringify(
             }
             inline for (S.fields) |Field| {
                 // don't include void fields
-                if (Field.field_type == void) continue;
+                if (Field.type == void) continue;
 
                 var emit_field = true;
 
                 // don't include optional fields that are null when emit_null_optional_fields is set to false
-                if (@typeInfo(Field.field_type) == .Optional) {
+                if (@typeInfo(Field.type) == .Optional) {
                     if (options.emit_null_optional_fields == false) {
                         if (@field(value, Field.name) == null) {
                             emit_field = false;
@@ -2479,7 +2482,7 @@ pub fn stringify(
                 if (child_options.whitespace) |*whitespace| {
                     whitespace.indent_level += 1;
                 }
-                for (value) |x, i| {
+                for (value, 0..) |x, i| {
                     if (i != 0) {
                         try out_stream.writeByte(',');
                     }
@@ -2527,6 +2530,42 @@ const WSState = enum {
     Object,
 };
 
+pub const Whitespace = struct {
+    /// How many indentation levels deep are we?
+    indent_level: usize = 0,
+    /// What character(s) should be used for indentation?
+    indent: union(enum) {
+        space: u8,
+        tab: void,
+        none: void,
+    } = .{ .space = 4 },
+    /// After a colon, should whitespace be inserted?
+    separator: bool = true,
+    pub fn outputIndent(
+        whitespace: @This(),
+        out_stream: anytype,
+    ) @TypeOf(out_stream).Error!void {
+        var char: u8 = undefined;
+        var n_chars: usize = undefined;
+        switch (whitespace.indent) {
+            .space => |n_spaces| {
+                char = ' ';
+                n_chars = n_spaces;
+            },
+            .tab => {
+                char = '\t';
+                n_chars = 1;
+            },
+            .none => return,
+        }
+        try out_stream.writeByte('\n');
+        n_chars *= whitespace.indent_level;
+        try out_stream.writeByteNTimes(char, n_chars);
+    }
+};
+/// Controls the whitespace emitted
+whitespace: Whitespace = .{ .indent = .none, .separator = false },
+
 /// Writes JSON ([RFC8259](https://tools.ietf.org/html/rfc8259)) formatted data
 /// to a stream. `max_depth` is a comptime-known upper bound on the nesting depth.
 /// TODO A future iteration of this API will allow passing `null` for this value,
@@ -2537,7 +2576,7 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
 
         pub const Stream = OutStream;
 
-        whitespace: std.json.StringifyOptions.Whitespace = std.json.StringifyOptions.Whitespace{
+        whitespace: StringifyOptions.Whitespace = StringifyOptions.Whitespace{
             .indent_level = 0,
             .indent = .{ .Space = 1 },
         },
@@ -2687,8 +2726,8 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
                 .ComptimeInt => {
                     return self.emitNumber(@as(std.math.IntFittingRange(value, value), value));
                 },
-                .Float, .ComptimeFloat => if (@floatCast(f64, value) == value) {
-                    try self.stream.print("{}", .{@floatCast(f64, value)});
+                .Float, .ComptimeFloat => if (@as(f64, @floatCast(value)) == value) {
+                    try self.stream.print("{}", .{@as(f64, @floatCast(value))});
                     self.popState();
                     return;
                 },
@@ -2710,7 +2749,7 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
         }
 
         /// Writes the complete json into the output stream
-        pub fn emitJson(self: *Self, json: std.json.Value) Stream.Error!void {
+        pub fn emitJson(self: *Self, json: Value) Stream.Error!void {
             assert(self.state[self.state_index] == WSState.Value);
             try self.stringify(json);
             self.popState();
@@ -2731,7 +2770,7 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
         }
 
         fn stringify(self: *Self, value: anytype) !void {
-            try std.json.stringify(value, std.json.StringifyOptions{
+            try Json5.stringify(value, StringifyOptions{
                 .whitespace = self.whitespace,
             }, self.stream);
         }
@@ -2783,7 +2822,7 @@ fn jsonValueEqual(allocator: Allocator, a: Value, b: Value) !bool {
         .Array => |a_a| switch (b) {
             .Array => |b_a| {
                 if (a_a.items.len != b_a.items.len) return false;
-                for (a_a.items) |a_item, i| {
+                for (a_a.items, 0..) |a_item, i| {
                     const b_item = b_a.items[i];
                     if (!(try jsonValueEqual(allocator, a_item, b_item))) return false;
                 }
@@ -2820,7 +2859,7 @@ fn jsonValueEqual(allocator: Allocator, a: Value, b: Value) !bool {
 
 pub fn json5Equal(allocator: Allocator, a: Value, b: Value) !bool {
     var arena = std.heap.ArenaAllocator.init(allocator);
-    var val = try jsonValueEqual(arena.allocator(), a, b);
+    const val = try jsonValueEqual(arena.allocator(), a, b);
     arena.deinit();
     return val;
 }
@@ -2832,10 +2871,10 @@ pub fn writeStream(
     return WriteStream(@TypeOf(out_stream), max_depth).init(out_stream);
 }
 
-fn getJsonObject(allocator: std.mem.Allocator) !std.json.Value {
-    var value = std.json.Value{ .Object = std.json.ObjectMap.init(allocator) };
-    try value.Object.put("one", std.json.Value{ .Integer = @intCast(i64, 1) });
-    try value.Object.put("two", std.json.Value{ .Float = 2.0 });
+fn getJsonObject(allocator: std.mem.Allocator) !Value {
+    var value = Value{ .Object = ObjectMap.init(allocator) };
+    try value.Object.put("one", Value{ .Integer = @as(i64, @intCast(1)) });
+    try value.Object.put("two", Value{ .Float = 2.0 });
     return value;
 }
 

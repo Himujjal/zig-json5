@@ -107,7 +107,7 @@ fn parsedEqual(a: anytype, b: @TypeOf(a)) bool {
             }
         },
         .Array => {
-            for (a) |e, i|
+            for (a, 0..) |e, i|
                 if (!parsedEqual(e, b[i])) return false;
             return true;
         },
@@ -121,7 +121,7 @@ fn parsedEqual(a: anytype, b: @TypeOf(a)) bool {
             .One => return parsedEqual(a.*, b.*),
             .Slice => {
                 if (a.len != b.len) return false;
-                for (a) |e, i|
+                for (a, 0..) |e, i|
                     if (!parsedEqual(e, b[i])) return false;
                 return true;
             },
@@ -228,11 +228,11 @@ test "stringify basic types" {
     try teststringify("null", @as(?u8, null), StringifyOptions{});
     try teststringify("null", @as(?*u32, null), StringifyOptions{});
     try teststringify("42", 42, StringifyOptions{});
-    try teststringify("4.2e+01", 42.0, StringifyOptions{});
+    try teststringify("4.2e1", 42.0, StringifyOptions{});
     try teststringify("42", @as(u8, 42), StringifyOptions{});
     try teststringify("42", @as(u128, 42), StringifyOptions{});
-    try teststringify("4.2e+01", @as(f32, 42), StringifyOptions{});
-    try teststringify("4.2e+01", @as(f64, 42), StringifyOptions{});
+    try teststringify("4.2e1", @as(f32, 42), StringifyOptions{});
+    try teststringify("4.2e1", @as(f64, 42), StringifyOptions{});
     try teststringify("\"ItBroke\"", @as(anyerror, error.ItBroke), StringifyOptions{});
 }
 
@@ -373,7 +373,8 @@ test "stringify struct with custom stringifier" {
 }
 
 test "stringify vector" {
-    try teststringify("[1,1]", @splat(2, @as(u32, 1)), StringifyOptions{});
+    const vector: @Vector(2, u32) = @splat(@as(u32, 1));
+    try teststringify("[1,1]", vector, StringifyOptions{});
 }
 
 fn teststringify(expected: []const u8, value: anytype, options: StringifyOptions) !void {
@@ -452,7 +453,7 @@ test "encodesTo" {
 /// stringified value to `output`
 fn parseStringifyAndTest(input: []const u8, expected: []const u8) !void {
     const last_char = expected[expected.len - 1];
-    var expected_new = if (last_char == 0 or last_char == 10) expected[0..(expected.len - 1)] else expected;
+    const expected_new = if (last_char == 0 or last_char == 10) expected[0..(expected.len - 1)] else expected;
 
     const Parser = main.Parser;
     const a = testing.allocator;
@@ -481,7 +482,7 @@ const json5_tests = &[_]JSON5TestStruct{
     .{ .source = "/**/[]", .output = "[]" },
     .{ .source = "[/**/]", .output = "[]" },
     .{ .source = "{/**/}", .output = "{}" },
-    .{ .source = 
+    .{ .source =
     \\ // comment1
     \\ {// comment2
     \\ "hello" // comment3
@@ -489,7 +490,7 @@ const json5_tests = &[_]JSON5TestStruct{
     \\ "world" // comment 5
     \\ }
     \\ // comment 6
-    , .output = 
+    , .output =
     \\{"hello":"world"}
     },
     .{ .source = "'he\\'llo'", .output = "\"he'llo\"" },
@@ -498,41 +499,41 @@ const json5_tests = &[_]JSON5TestStruct{
     .{ .source = "{hello: 'world'}", .output = "{\"hello\":\"world\"}" },
     .{ .source = "{hello: 'world', yo: ['yo',]}", .output = "{\"hello\":\"world\",\"yo\":[\"yo\"]}" },
 
-    .{ .source = 
+    .{ .source =
     \\ { hello: "\
     \\world \n 2" }
     , .output = "{\"hello\":\"\\nworld \\n 2\"}" },
 
-    .{ .source = "0.1 ", .output = "1.0e-01" },
+    .{ .source = "0.1 ", .output = "1e-1" },
     .{ .source = "{true:true,false:[true,false],null:1}", .output = "{\"true\":true,\"false\":[true,false],\"null\":1}" },
 
     .{ .source = "{true:true, null:[true, null]}", .output = "{\"true\":true,\"null\":[true,null]}" },
 
     .{
-        .source = 
+        .source =
         \\ {true:true,false:1,null:{null:null,true:false}}
         ,
         .output = "{\"true\":true,\"false\":1,\"null\":{\"null\":null,\"true\":false}}",
     },
-    .{ .source = 
+    .{ .source =
     \\{"required":"something","another_required":"something else"}
-    , .output = 
+    , .output =
     \\{"required":"something","another_required":"something else"}
     },
 
-    .{ .source = 
+    .{ .source =
     \\{required:"something",another_required:"something else",null:1}
-    , .output = 
+    , .output =
     \\{"required":"something","another_required":"something else","null":1}
     },
-    .{ .source = 
+    .{ .source =
     \\{
     \\ 		// name: "import"
     \\ 		p: null,
     \\      // hee
     \\      a: [null,],
     \\}
-    , .output = 
+    , .output =
     \\{"p":null,"a":[null]}
     },
     .{ .source = @embedFile("./fixtures/test1.json5"), .output = @embedFile("./fixtures/test1.json") },
@@ -542,7 +543,7 @@ const json5_tests = &[_]JSON5TestStruct{
 };
 
 test "JSON5 tests" {
-    for (json5_tests) |json_test, i| {
+    for (json5_tests, 0..) |json_test, i| {
         parseStringifyAndTest(json_test.source, json_test.output) catch |err| {
             std.debug.print(
                 "\n====ERROR in Comparison: Error:{}\n i={d}====\nSOURCE =====>\n{s}\n======\nOUTPUT =====>\n{s}\n",
@@ -557,14 +558,14 @@ test "JSON5 Deep Equality Test" {
     const a = testing.allocator;
     const Parser = main.Parser;
 
-    for (json5_tests) |json_test, i| {
+    for (json5_tests, 0..) |json_test, i| {
         var source_parser = Parser.init(a, false);
         var source_tree = try source_parser.parse(json_test.source);
         var output_parser = Parser.init(a, false);
         var output_tree = try output_parser.parse(json_test.source);
 
         if (i == 5) {
-            var is_equal = try main.json5Equal(a, source_tree.root, output_tree.root);
+            const is_equal = try main.json5Equal(a, source_tree.root, output_tree.root);
             std.testing.expect(is_equal) catch |err| {
                 std.debug.print(
                     "\n====ERROR in Deep equality: i={d}====\nEXPECTED =====>\n{s}\n======\nGOT =====>\n{s}\n",
@@ -594,7 +595,7 @@ test "json5 write stream" {
     var arena_allocator = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena_allocator.deinit();
 
-    var w = std.json.writeStream(out, 10);
+    var w = main.writeStream(out, 10);
 
     try w.beginObject();
 
@@ -627,24 +628,24 @@ test "json5 write stream" {
         \\{
         \\ "object": {
         \\  "one": 1,
-        \\  "two": 2.0e+00
+        \\  "two": 2e0
         \\ },
         \\ "string": "This is a string",
         \\ "array": [
         \\  "Another string",
         \\  1,
-        \\  3.5e+00
+        \\  3.5e0
         \\ ],
         \\ "int": 10,
-        \\ "float": 3.5e+00
+        \\ "float": 3.5e0
         \\}
     ;
-    try std.testing.expect(std.mem.eql(u8, expected, result));
+    try std.testing.expectEqualSlices(u8, expected, result);
 }
 
-fn getJsonObject(allocator: std.mem.Allocator) !std.json.Value {
-    var value = std.json.Value{ .Object = std.json.ObjectMap.init(allocator) };
-    try value.Object.put("one", std.json.Value{ .Integer = @intCast(i64, 1) });
-    try value.Object.put("two", std.json.Value{ .Float = 2.0 });
+fn getJsonObject(allocator: std.mem.Allocator) !main.Value {
+    var value = main.Value{ .Object = main.ObjectMap.init(allocator) };
+    try value.Object.put("one", main.Value{ .Integer = @as(i64, @intCast(1)) });
+    try value.Object.put("two", main.Value{ .Float = 2.0 });
     return value;
 }
