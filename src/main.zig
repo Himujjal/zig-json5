@@ -90,7 +90,7 @@ pub const Token = union(enum) {
         pub fn decodedLength(self: @This()) usize {
             return self.count +% switch (self.escapes) {
                 .None => 0,
-                .Some => |s| @as(usize, @bitCast(s.size_diff))
+                .Some => |s| @as(usize, @bitCast(s.size_diff)),
             };
         }
 
@@ -125,7 +125,7 @@ fn AggregateContainerStack(comptime n: usize) type {
 
         const element_bitcount = 8 * @sizeOf(usize);
         const element_count = n / element_bitcount;
-        const ElementType = @Type(.{ .Int = .{ .signedness = .unsigned, .bits = element_bitcount } });
+        const ElementType = @Type(.{ .int = .{ .signedness = .unsigned, .bits = element_bitcount } });
         const ElementShiftAmountType = std.math.Log2Int(ElementType);
 
         comptime {
@@ -162,7 +162,7 @@ fn AggregateContainerStack(comptime n: usize) type {
 
             const bit_to_extract = self.len - 1;
             const index = bit_to_extract / element_bitcount;
-            const sub_index = @as(ElementShiftAmountType, @intCast( bit_to_extract % element_bitcount));
+            const sub_index = @as(ElementShiftAmountType, @intCast(bit_to_extract % element_bitcount));
             const bit = @as(u1, @intCast((self.memory[index] >> sub_index) & 1));
             return @enumFromInt(bit);
         }
@@ -1489,18 +1489,18 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
     }
 
     switch (@typeInfo(T)) {
-        .Bool => return error{UnexpectedToken},
-        .Float, .ComptimeFloat => return error{UnexpectedToken} || std.fmt.ParseFloatError,
-        .Int, .ComptimeInt => {
+        .bool => return error{UnexpectedToken},
+        .float, .comptime_float => return error{UnexpectedToken} || std.fmt.ParseFloatError,
+        .int, .comptime_int => {
             return error{ UnexpectedToken, InvalidNumber, Overflow } ||
                 std.fmt.ParseIntError || std.fmt.ParseFloatError;
         },
-        .Optional => |optionalInfo| {
+        .optional => |optionalInfo| {
             return ParseInternalErrorImpl(optionalInfo.child, inferred_types ++ [_]type{T});
         },
-        .Enum => return error{ UnexpectedToken, InvalidEnumTag } || std.fmt.ParseIntError ||
+        .@"enum" => return error{ UnexpectedToken, InvalidEnumTag } || std.fmt.ParseIntError ||
             std.meta.IntToEnumError || std.meta.IntToEnumError,
-        .Union => |unionInfo| {
+        .@"union" => |unionInfo| {
             if (unionInfo.tag_type) |_| {
                 var errors = error{NoUnionMembersMatched};
                 for (unionInfo.fields) |u_field| {
@@ -1511,7 +1511,7 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
                 @compileError("Unable to parse into untagged union '" ++ @typeName(T) ++ "'");
             }
         },
-        .Struct => |structInfo| {
+        .@"struct" => |structInfo| {
             var errors = error{
                 DuplicateJSON5Field,
                 UnexpectedEndOfJson5,
@@ -1525,18 +1525,18 @@ fn ParseInternalErrorImpl(comptime T: type, comptime inferred_types: []const typ
             }
             return errors;
         },
-        .Array => |arrayInfo| {
+        .array => |arrayInfo| {
             return error{ UnexpectedEndOfJson5, UnexpectedToken } || TokenStream.Error ||
                 UnescapeValidStringError ||
                 ParseInternalErrorImpl(arrayInfo.child, inferred_types ++ [_]type{T});
         },
-        .Pointer => |ptrInfo| {
+        .pointer => |ptrInfo| {
             const errors = error{AllocatorRequired} || std.mem.Allocator.Error;
             switch (ptrInfo.size) {
-                .One => {
+                .one => {
                     return errors || ParseInternalErrorImpl(ptrInfo.child, inferred_types ++ [_]type{T});
                 },
-                .Slice => {
+                .slice => {
                     return errors || error{ UnexpectedEndOfJson5, UnexpectedToken } ||
                         ParseInternalErrorImpl(ptrInfo.child, inferred_types ++ [_]type{T}) ||
                         UnescapeValidStringError || TokenStream.Error;
@@ -1556,21 +1556,21 @@ fn parseInternal(
     options: ParseOptions,
 ) ParseInternalError(T)!T {
     switch (@typeInfo(T)) {
-        .Bool => {
+        .bool => {
             return switch (token) {
                 .True => true,
                 .False => false,
                 else => error.UnexpectedToken,
             };
         },
-        .Float, .ComptimeFloat => {
+        .float, .comptime_float => {
             switch (token) {
                 .Number => |numberToken| return try std.fmt.parseFloat(T, numberToken.slice(tokens.slice, tokens.i - 1)),
                 .String => |stringToken| return try std.fmt.parseFloat(T, stringToken.slice(tokens.slice, tokens.i - 1)),
                 else => return error.UnexpectedToken,
             }
         },
-        .Int, .ComptimeInt => {
+        .int, .comptime_int => {
             switch (token) {
                 .Number => |numberToken| {
                     if (numberToken.is_integer)
@@ -1596,14 +1596,14 @@ fn parseInternal(
                 else => return error.UnexpectedToken,
             }
         },
-        .Optional => |optionalInfo| {
+        .optional => |optionalInfo| {
             if (token == .Null) {
                 return null;
             } else {
                 return try parseInternal(optionalInfo.child, token, tokens, options);
             }
         },
-        .Enum => |enumInfo| {
+        .@"enum" => |enumInfo| {
             switch (token) {
                 .Number => |numberToken| {
                     if (!numberToken.is_integer) return error.UnexpectedToken;
@@ -1627,7 +1627,7 @@ fn parseInternal(
                 else => return error.UnexpectedToken,
             }
         },
-        .Union => |unionInfo| {
+        .@"union" => |unionInfo| {
             if (unionInfo.tag_type) |_| {
                 // try each of the union fields until we find one that matches
                 inline for (unionInfo.fields) |u_field| {
@@ -1651,7 +1651,7 @@ fn parseInternal(
                 @compileError("Unable to parse into untagged union '" ++ @typeName(T) ++ "'");
             }
         },
-        .Struct => |structInfo| {
+        .@"struct" => |structInfo| {
             switch (token) {
                 .ObjectBegin => {},
                 else => return error.UnexpectedToken,
@@ -1727,11 +1727,13 @@ fn parseInternal(
             }
             inline for (structInfo.fields, 0..) |field, i| {
                 if (!fields_seen[i]) {
-                    if (field.default_value) |default_ptr| {
-                        if (!field.is_comptime) {
-                            const default = @as(*align(1) const field.type, @ptrCast(default_ptr)).*;
-                            @field(r, field.name) = default;
-                        }
+                    if (field.defaultValue()) |default_ptr| {
+                        _ = default_ptr;
+                        //if (!field.is_comptime) {
+                        //    const default = @as(*align(1) const field.type, @ptrCast(default_ptr)).*;
+                        //    @field(r, field.name) = default;
+                        //}
+                        @panic("default fields temporarily unsupported");
                     } else {
                         return error.MissingField;
                     }
@@ -1739,7 +1741,7 @@ fn parseInternal(
             }
             return r;
         },
-        .Array => |arrayInfo| {
+        .array => |arrayInfo| {
             switch (token) {
                 .ArrayBegin => {
                     var r: T = undefined;
@@ -1776,21 +1778,21 @@ fn parseInternal(
                 else => return error.UnexpectedToken,
             }
         },
-        .Pointer => |ptrInfo| {
+        .pointer => |ptrInfo| {
             const allocator = options.allocator orelse return error.AllocatorRequired;
             switch (ptrInfo.size) {
-                .One => {
+                .one => {
                     const r: T = try allocator.create(ptrInfo.child);
                     errdefer allocator.destroy(r);
                     r.* = try parseInternal(ptrInfo.child, token, tokens, options);
                     return r;
                 },
-                .Slice => {
+                .slice => {
                     switch (token) {
                         .ArrayBegin => {
                             var arraylist = std.ArrayList(ptrInfo.child).init(allocator);
                             errdefer {
-                                while (arraylist.popOrNull()) |v| {
+                                while (arraylist.pop()) |v| {
                                     parseFree(ptrInfo.child, v, options);
                                 }
                                 arraylist.deinit();
@@ -1808,7 +1810,7 @@ fn parseInternal(
                                 arraylist.appendAssumeCapacity(v);
                             }
 
-                            if (ptrInfo.sentinel) |some| {
+                            if (ptrInfo.sentinel()) |some| {
                                 const sentinel_value = @as(*align(1) const ptrInfo.child, @ptrCast(some)).*;
                                 try arraylist.append(sentinel_value);
                                 const output = arraylist.toOwnedSlice();
@@ -1821,14 +1823,14 @@ fn parseInternal(
                             if (ptrInfo.child != u8) return error.UnexpectedToken;
                             const source_slice = stringToken.slice(tokens.slice, tokens.i - 1);
                             const len = stringToken.decodedLength();
-                            const output = try allocator.alloc(u8, len + @intFromBool(ptrInfo.sentinel != null));
+                            const output = try allocator.alloc(u8, len + @intFromBool(ptrInfo.sentinel() != null));
                             errdefer allocator.free(output);
                             switch (stringToken.escapes) {
                                 .None => @memcpy(output, source_slice),
                                 .Some => try unescapeValidString(output, source_slice),
                             }
 
-                            if (ptrInfo.sentinel) |some| {
+                            if (ptrInfo.sentinel()) |some| {
                                 const char = @as(*const u8, @ptrCast(some)).*;
                                 output[len] = char;
                                 return output[0..len :char];
@@ -1866,13 +1868,13 @@ pub fn parse(comptime T: type, tokens: *TokenStream, options: ParseOptions) Pars
 /// Should be called with the same type and `ParseOptions` that were passed to `parse`
 pub fn parseFree(comptime T: type, value: T, options: ParseOptions) void {
     switch (@typeInfo(T)) {
-        .Bool, .Float, .ComptimeFloat, .Int, .ComptimeInt, .Enum => {},
-        .Optional => {
+        .bool, .float, .comptime_float, .int, .comptime_int, .@"enum" => {},
+        .optional => {
             if (value) |v| {
                 return parseFree(@TypeOf(v), v, options);
             }
         },
-        .Union => |unionInfo| {
+        .@"union" => |unionInfo| {
             if (unionInfo.tag_type) |UnionTagType| {
                 inline for (unionInfo.fields) |u_field| {
                     if (value == @field(UnionTagType, u_field.name)) {
@@ -1884,26 +1886,26 @@ pub fn parseFree(comptime T: type, value: T, options: ParseOptions) void {
                 unreachable;
             }
         },
-        .Struct => |structInfo| {
+        .@"struct" => |structInfo| {
             inline for (structInfo.fields) |field| {
                 if (!field.is_comptime) {
                     parseFree(field.type, @field(value, field.name), options);
                 }
             }
         },
-        .Array => |arrayInfo| {
+        .array => |arrayInfo| {
             for (value) |v| {
                 parseFree(arrayInfo.child, v, options);
             }
         },
-        .Pointer => |ptrInfo| {
+        .pointer => |ptrInfo| {
             const allocator = options.allocator orelse unreachable;
             switch (ptrInfo.size) {
-                .One => {
+                .one => {
                     parseFree(ptrInfo.child, value.*, options);
                     allocator.destroy(value);
                 },
-                .Slice => {
+                .slice => {
                     for (value) |v| {
                         parseFree(ptrInfo.child, v, options);
                     }
@@ -1978,8 +1980,8 @@ pub const Parser = struct {
                         return;
                     }
 
-                    var value = p.stack.pop();
-                    try p.pushToParent(&value);
+                    if (p.stack.pop()) |value|
+                        try p.pushToParent(&value);
                 },
                 .String => |s| {
                     try p.stack.append(try p.parseString(allocator, s, input, i));
@@ -2044,8 +2046,8 @@ pub const Parser = struct {
                             return;
                         }
 
-                        var value = p.stack.pop();
-                        try p.pushToParent(&value);
+                        if (p.stack.pop()) |value|
+                            try p.pushToParent(&value);
                     },
                     .ObjectBegin => {
                         try p.stack.append(Value{ .Object = ObjectMap.init(allocator) });
@@ -2210,7 +2212,7 @@ pub fn unescapeValidString(output: []u8, input: []const u8) UnescapeValidStringE
                     mem.nativeToLittle(u16, firstCodeUnit),
                     mem.nativeToLittle(u16, secondCodeUnit),
                 };
-                if (std.unicode.utf16leToUtf8(output[outIndex..], &utf16le_seq)) |byteCount| {
+                if (std.unicode.utf16LeToUtf8(output[outIndex..], &utf16le_seq)) |byteCount| {
                     outIndex += byteCount;
                     inIndex += 12;
                 } else |_| {
@@ -2363,38 +2365,38 @@ pub fn stringify(
 ) @TypeOf(out_stream).Error!void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
-        .Float, .ComptimeFloat => {
+        .float, .comptime_float => {
             return std.fmt.format(out_stream, "{e}", .{value});
         },
-        .Int, .ComptimeInt => {
+        .int, .comptime_int => {
             return std.fmt.formatIntValue(value, "", std.fmt.FormatOptions{}, out_stream);
         },
-        .Bool => {
+        .bool => {
             return out_stream.writeAll(if (value) "true" else "false");
         },
-        .Null => {
+        .null => {
             return out_stream.writeAll("null");
         },
-        .Optional => {
+        .optional => {
             if (value) |payload| {
                 return try stringify(payload, options, out_stream);
             } else {
                 return try stringify(null, options, out_stream);
             }
         },
-        .Enum => {
+        .@"enum" => {
             if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
 
             @compileError("Unable to stringify enum '" ++ @typeName(T) ++ "'");
         },
-        .Union => {
+        .@"union" => {
             if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
 
-            const info = @typeInfo(T).Union;
+            const info = @typeInfo(T).@"union";
             if (info.tag_type) |UnionTagType| {
                 inline for (info.fields) |u_field| {
                     if (value == @field(UnionTagType, u_field.name)) {
@@ -2405,7 +2407,7 @@ pub fn stringify(
                 @compileError("Unable to stringify untagged union '" ++ @typeName(T) ++ "'");
             }
         },
-        .Struct => |S| {
+        .@"struct" => |S| {
             if (@hasDecl(T, "json5Stringify")) {
                 return value.json5Stringify(options, out_stream);
             }
@@ -2423,7 +2425,7 @@ pub fn stringify(
                 var emit_field = true;
 
                 // don't include optional fields that are null when emit_null_optional_fields is set to false
-                if (@typeInfo(Field.type) == .Optional) {
+                if (@typeInfo(Field.type) == .optional) {
                     if (options.emit_null_optional_fields == false) {
                         if (@field(value, Field.name) == null) {
                             emit_field = false;
@@ -2458,10 +2460,10 @@ pub fn stringify(
             try out_stream.writeByte('}');
             return;
         },
-        .ErrorSet => return stringify(@as([]const u8, @errorName(value)), options, out_stream),
-        .Pointer => |ptr_info| switch (ptr_info.size) {
-            .One => switch (@typeInfo(ptr_info.child)) {
-                .Array => {
+        .error_set => return stringify(@as([]const u8, @errorName(value)), options, out_stream),
+        .pointer => |ptr_info| switch (ptr_info.size) {
+            .one => switch (@typeInfo(ptr_info.child)) {
+                .array => {
                     const Slice = []const std.meta.Elem(ptr_info.child);
                     return stringify(@as(Slice, value), options, out_stream);
                 },
@@ -2471,7 +2473,7 @@ pub fn stringify(
                 },
             },
             // TODO: .Many when there is a sentinel (waiting for https://github.com/ziglang/zig/pull/3972)
-            .Slice => {
+            .slice => {
                 if (ptr_info.child == u8 and options.string == .String and std.unicode.utf8ValidateSlice(value)) {
                     try encodeJson5String(value, options, out_stream);
                     return;
@@ -2501,8 +2503,8 @@ pub fn stringify(
             },
             else => @compileError("Unable to stringify type '" ++ @typeName(T) ++ "'"),
         },
-        .Array => return stringify(&value, options, out_stream),
-        .Vector => |info| {
+        .array => return stringify(&value, options, out_stream),
+        .vector => |info| {
             const array: [info.len]info.child = value;
             return stringify(&array, options, out_stream);
         },
@@ -2711,7 +2713,7 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
         ) !void {
             assert(self.state[self.state_index] == WSState.Value);
             switch (@typeInfo(@TypeOf(value))) {
-                .Int => |info| {
+                .int => |info| {
                     if (info.bits < 53) {
                         try self.stream.print("{}", .{value});
                         self.popState();
@@ -2723,10 +2725,10 @@ pub fn WriteStream(comptime OutStream: type, comptime max_depth: usize) type {
                         return;
                     }
                 },
-                .ComptimeInt => {
+                .comptime_int => {
                     return self.emitNumber(@as(std.math.IntFittingRange(value, value), value));
                 },
-                .Float, .ComptimeFloat => if (@as(f64, @floatCast(value)) == value) {
+                .float, .comptime_float => if (@as(f64, @floatCast(value)) == value) {
                     try self.stream.print("{}", .{@as(f64, @floatCast(value))});
                     self.popState();
                     return;
