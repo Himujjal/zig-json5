@@ -565,7 +565,7 @@ pub const StreamingParser = struct {
                 },
                 'n' => {
                     const last_type = p.stack.peek() orelse return error.TooManyClosingItems;
-                    if (last_type == .object) {
+                    if (last_type == .object or p.after_string_state == .ObjectSeparator) {
                         p.state = .Identifier;
                     } else {
                         p.state = .NullLiteral1;
