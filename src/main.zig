@@ -469,8 +469,6 @@ pub const StreamingParser = struct {
                     }
 
                     _ = p.stack.pop();
-                    p.state = .ValueBegin;
-                    p.after_string_state = State.fromAggregateContainerType(last_type);
 
                     switch (p.stack.len) {
                         0 => {
@@ -479,6 +477,8 @@ pub const StreamingParser = struct {
                         },
                         else => {
                             p.state = .ValueEnd;
+                            const last2_type = p.stack.peek() orelse unreachable;
+                            p.after_string_state = State.fromAggregateContainerType(last2_type);
                         },
                     }
 
